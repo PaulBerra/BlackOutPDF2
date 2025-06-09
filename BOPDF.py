@@ -173,11 +173,44 @@ class ConfigManager:
 # ==========================================
 
 class SecurityLevel(Enum):
-    """Security levels for document access"""
-    PUBLIC = "public"
-    CONFIDENTIAL = "confidential"
-    SECRET = "secret"
-    TOP_SECRET = "top_secret"
+    """Security levels for document access - supports flexible numbering"""
+    LEVEL_1 = "level_1"  # Default level
+    LEVEL_2 = "level_2"
+    LEVEL_3 = "level_3"
+    LEVEL_4 = "level_4"
+    LEVEL_5 = "level_5"
+    
+    @staticmethod
+    def get_display_name(level) -> str:
+        """Get human-readable name for security level"""
+        display_names = {
+            SecurityLevel.LEVEL_1: "🔓 Level 1 (Default)",
+            SecurityLevel.LEVEL_2: "🔒 Level 2 (Confidential)", 
+            SecurityLevel.LEVEL_3: "🔐 Level 3 (Secret)",
+            SecurityLevel.LEVEL_4: "🛡️ Level 4 (Top Secret)",
+            SecurityLevel.LEVEL_5: "⚡ Level 5 (Ultra Secret)"
+        }
+        return display_names.get(level, str(level))
+    
+    @staticmethod
+    def from_int(level_int: int):
+        """Convert integer to SecurityLevel"""
+        levels = [SecurityLevel.LEVEL_1, SecurityLevel.LEVEL_2, SecurityLevel.LEVEL_3, 
+                 SecurityLevel.LEVEL_4, SecurityLevel.LEVEL_5]
+        if 1 <= level_int <= 5:
+            return levels[level_int - 1]
+        return SecurityLevel.LEVEL_1
+    
+    def to_int(self) -> int:
+        """Convert SecurityLevel to integer"""
+        level_map = {
+            SecurityLevel.LEVEL_1: 1,
+            SecurityLevel.LEVEL_2: 2,
+            SecurityLevel.LEVEL_3: 3,
+            SecurityLevel.LEVEL_4: 4,
+            SecurityLevel.LEVEL_5: 5
+        }
+        return level_map.get(self, 1)
 
 class EncryptionType(Enum):
     """Types of encryption available"""
@@ -209,12 +242,20 @@ class ApplicationState:
 
 @dataclass
 class RedactionArea:
-    """Redaction area data"""
+    """Redaction area data with security level support"""
     points: List[Tuple[int, int]]
     color: Tuple[int, int, int]
     security_level: SecurityLevel
     mode: RedactionMode
     metadata: Dict[str, Any]
+    level_int: int = 1  # For easier serialization
+    
+    def __post_init__(self):
+        """Ensure security_level and level_int are synchronized"""
+        if hasattr(self.security_level, 'to_int'):
+            self.level_int = self.security_level.to_int()
+        else:
+            self.security_level = SecurityLevel.from_int(self.level_int)
 
 
 # ==========================================
@@ -222,86 +263,146 @@ class RedactionArea:
 # ==========================================
 
 class SecurityModule:
-    """Handles all security operations including RSA encryption/decryption"""
+    """Handles all security operations including MULTI-LEVEL RSA encryption/decryption"""
     
     def __init__(self):
         self.temp_dir = Path(tempfile.mkdtemp(prefix="blackout_pdf_"))
-        self.rsa_private_key = None
-        self.rsa_public_key = None
+        # Multi-level key storage: level -> (private_key, public_key)
+        self.rsa_keys: Dict[SecurityLevel, Tuple[Optional[any], Optional[any]]] = {}
+        self.current_level: SecurityLevel = SecurityLevel.LEVEL_1
         
-    def generate_rsa_keypair(self, key_size: int = 2048) -> Tuple[bytes, bytes]:
-        """Generate RSA key pair and store them internally"""
+        # Initialize empty key slots for all levels
+        for level in SecurityLevel:
+            self.rsa_keys[level] = (None, None)
+    
+    def set_current_level(self, level: SecurityLevel):
+        """Set current working security level"""
+        self.current_level = level
+        logger.info(f"Security level set to: {SecurityLevel.get_display_name(level)}")
+    
+    def generate_rsa_keypair(self, level: SecurityLevel = None, key_size: int = 2048) -> Tuple[bytes, bytes]:
+        """Generate RSA key pair for specific security level"""
+        if level is None:
+            level = self.current_level
+            
         try:
             # Generate private key
-            self.rsa_private_key = rsa.generate_private_key(
+            private_key = rsa.generate_private_key(
                 public_exponent=65537,
                 key_size=key_size
             )
             
             # Get public key
-            self.rsa_public_key = self.rsa_private_key.public_key()
+            public_key = private_key.public_key()
+            
+            # Store keys for this level
+            self.rsa_keys[level] = (private_key, public_key)
             
             # Serialize keys
-            private_pem = self.rsa_private_key.private_bytes(
+            private_pem = private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.PKCS8,
                 encryption_algorithm=serialization.NoEncryption()
             )
             
-            public_pem = self.rsa_public_key.public_bytes(
+            public_pem = public_key.public_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PublicFormat.SubjectPublicKeyInfo
             )
             
-            logger.info(f"RSA keypair generated successfully (key size: {key_size})")
+            logger.info(f"RSA keypair generated for {SecurityLevel.get_display_name(level)} (key size: {key_size})")
             return private_pem, public_pem
             
         except Exception as e:
-            logger.error(f"Failed to generate RSA keypair: {e}")
+            logger.error(f"Failed to generate RSA keypair for {level}: {e}")
             raise
     
-    def load_private_key(self, private_key_pem: bytes):
-        """Load RSA private key for decryption"""
+    def load_private_key(self, private_key_pem: bytes, level: SecurityLevel = None):
+        """Load RSA private key for specific security level"""
+        if level is None:
+            level = self.current_level
+            
         try:
-            self.rsa_private_key = serialization.load_pem_private_key(
+            private_key = serialization.load_pem_private_key(
                 private_key_pem,
                 password=None
             )
-            logger.info("RSA private key loaded successfully")
+            
+            # Preserve existing public key if available
+            _, existing_public = self.rsa_keys[level]
+            self.rsa_keys[level] = (private_key, existing_public)
+            
+            logger.info(f"RSA private key loaded for {SecurityLevel.get_display_name(level)}")
             
         except Exception as e:
-            logger.error(f"Failed to load RSA private key: {e}")
+            logger.error(f"Failed to load RSA private key for {level}: {e}")
             raise
     
-    def load_public_key(self, public_key_pem: bytes):
-        """Load RSA public key for encryption"""
+    def load_public_key(self, public_key_pem: bytes, level: SecurityLevel = None):
+        """Load RSA public key for specific security level"""
+        if level is None:
+            level = self.current_level
+            
         try:
-            self.rsa_public_key = serialization.load_pem_public_key(public_key_pem)
-            logger.info("RSA public key loaded successfully")
+            public_key = serialization.load_pem_public_key(public_key_pem)
+            
+            # Preserve existing private key if available
+            existing_private, _ = self.rsa_keys[level]
+            self.rsa_keys[level] = (existing_private, public_key)
+            
+            logger.info(f"RSA public key loaded for {SecurityLevel.get_display_name(level)}")
             
         except Exception as e:
-            logger.error(f"Failed to load RSA public key: {e}")
+            logger.error(f"Failed to load RSA public key for {level}: {e}")
             raise
     
-    def has_private_key(self) -> bool:
-        """Check if private key is loaded"""
-        return self.rsa_private_key is not None
+    def has_private_key(self, level: SecurityLevel = None) -> bool:
+        """Check if private key is loaded for specific level"""
+        if level is None:
+            level = self.current_level
+        private_key, _ = self.rsa_keys.get(level, (None, None))
+        return private_key is not None
     
-    def has_public_key(self) -> bool:
-        """Check if public key is loaded"""
-        return self.rsa_public_key is not None
+    def has_public_key(self, level: SecurityLevel = None) -> bool:
+        """Check if public key is loaded for specific level"""
+        if level is None:
+            level = self.current_level
+        _, public_key = self.rsa_keys.get(level, (None, None))
+        return public_key is not None
     
-    def rsa_encrypt_data(self, data: bytes) -> bytes:
-        """Encrypt data using RSA public key (hybrid encryption)"""
-        if not self.rsa_public_key:
-            raise ValueError("No RSA public key available")
+    def get_loaded_levels(self) -> Dict[str, List[SecurityLevel]]:
+        """Get information about loaded keys by level"""
+        result = {
+            "private_keys": [],
+            "public_keys": [],
+            "complete_pairs": []
+        }
+        
+        for level, (private_key, public_key) in self.rsa_keys.items():
+            if private_key is not None:
+                result["private_keys"].append(level)
+            if public_key is not None:
+                result["public_keys"].append(level)
+            if private_key is not None and public_key is not None:
+                result["complete_pairs"].append(level)
+        
+        return result
+    
+    def rsa_encrypt_data(self, data: bytes, level: SecurityLevel = None) -> bytes:
+        """Encrypt data using RSA public key for specific level (hybrid encryption)"""
+        if level is None:
+            level = self.current_level
+            
+        _, public_key = self.rsa_keys.get(level, (None, None))
+        if not public_key:
+            raise ValueError(f"No RSA public key available for {SecurityLevel.get_display_name(level)}")
         
         try:
             # Generate AES key for actual data encryption
             aes_key = os.urandom(32)  # 256-bit AES key
             
             # Encrypt AES key with RSA
-            encrypted_aes_key = self.rsa_public_key.encrypt(
+            encrypted_aes_key = public_key.encrypt(
                 aes_key,
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -321,30 +422,36 @@ class SecurityModule:
             
             encrypted_data = encryptor.update(padded_data) + encryptor.finalize()
             
-            # Combine encrypted AES key, IV, and encrypted data
-            result = len(encrypted_aes_key).to_bytes(4, 'big') + encrypted_aes_key + iv + encrypted_data
+            # Combine level info, encrypted AES key, IV, and encrypted data
+            level_byte = level.to_int().to_bytes(1, 'big')
+            result = level_byte + len(encrypted_aes_key).to_bytes(4, 'big') + encrypted_aes_key + iv + encrypted_data
             
-            logger.info(f"Data encrypted successfully (size: {len(data)} -> {len(result)})")
+            logger.info(f"Data encrypted for {SecurityLevel.get_display_name(level)} (size: {len(data)} -> {len(result)})")
             return result
             
         except Exception as e:
-            logger.error(f"Failed to encrypt data: {e}")
+            logger.error(f"Failed to encrypt data for {level}: {e}")
             raise
     
-    def rsa_decrypt_data(self, encrypted_data: bytes) -> bytes:
-        """Decrypt data using RSA private key"""
-        if not self.rsa_private_key:
-            raise ValueError("No RSA private key available")
-        
+    def rsa_decrypt_data(self, encrypted_data: bytes) -> Tuple[bytes, SecurityLevel]:
+        """Decrypt data using appropriate RSA private key, return data and level"""
         try:
+            # Extract level information
+            level_int = int.from_bytes(encrypted_data[:1], 'big')
+            level = SecurityLevel.from_int(level_int)
+            
+            private_key, _ = self.rsa_keys.get(level, (None, None))
+            if not private_key:
+                raise ValueError(f"No RSA private key available for {SecurityLevel.get_display_name(level)}")
+            
             # Extract encrypted AES key
-            aes_key_length = int.from_bytes(encrypted_data[:4], 'big')
-            encrypted_aes_key = encrypted_data[4:4+aes_key_length]
-            iv = encrypted_data[4+aes_key_length:4+aes_key_length+16]
-            ciphertext = encrypted_data[4+aes_key_length+16:]
+            aes_key_length = int.from_bytes(encrypted_data[1:5], 'big')
+            encrypted_aes_key = encrypted_data[5:5+aes_key_length]
+            iv = encrypted_data[5+aes_key_length:5+aes_key_length+16]
+            ciphertext = encrypted_data[5+aes_key_length+16:]
             
             # Decrypt AES key with RSA
-            aes_key = self.rsa_private_key.decrypt(
+            aes_key = private_key.decrypt(
                 encrypted_aes_key,
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -363,12 +470,43 @@ class SecurityModule:
             pad_length = padded_data[-1]
             data = padded_data[:-pad_length]
             
-            logger.info(f"Data decrypted successfully (size: {len(encrypted_data)} -> {len(data)})")
-            return data
+            logger.info(f"Data decrypted for {SecurityLevel.get_display_name(level)} (size: {len(encrypted_data)} -> {len(data)})")
+            return data, level
             
         except Exception as e:
             logger.error(f"Failed to decrypt data: {e}")
             raise
+    
+    def decrypt_all_accessible_levels(self, encrypted_data_by_level: Dict[SecurityLevel, bytes]) -> Dict[SecurityLevel, bytes]:
+        """Decrypt all data for which we have private keys"""
+        decrypted_data = {}
+        
+        for level, encrypted_data in encrypted_data_by_level.items():
+            try:
+                if self.has_private_key(level):
+                    data, decrypted_level = self.rsa_decrypt_data(encrypted_data)
+                    decrypted_data[decrypted_level] = data
+                    logger.info(f"Successfully decrypted data for {SecurityLevel.get_display_name(level)}")
+                else:
+                    logger.info(f"Cannot decrypt {SecurityLevel.get_display_name(level)} - no private key")
+            except Exception as e:
+                logger.error(f"Failed to decrypt {SecurityLevel.get_display_name(level)}: {e}")
+                continue
+        
+        return decrypted_data
+    
+    # Legacy methods for backward compatibility
+    @property 
+    def rsa_private_key(self):
+        """Legacy property - returns private key for current level"""
+        private_key, _ = self.rsa_keys.get(self.current_level, (None, None))
+        return private_key
+    
+    @property
+    def rsa_public_key(self):
+        """Legacy property - returns public key for current level"""
+        _, public_key = self.rsa_keys.get(self.current_level, (None, None))
+        return public_key
     
     def cleanup(self):
         """Clean up temporary files"""
@@ -408,6 +546,9 @@ class RedactionCanvas(QLabel):
         self.scale_factor = 1.0
         self.redaction_color = QColor(0, 0, 0, 180)
         self.preview_color = QColor(255, 0, 0, 100)
+        
+        # Security level for new redactions
+        self.current_security_level = SecurityLevel.LEVEL_1
         
         # Movement/resize state
         self.moving_rect_idx = None
@@ -481,7 +622,7 @@ class RedactionCanvas(QLabel):
         area = RedactionArea(
             points=points,
             color=(self.redaction_color.red(), self.redaction_color.green(), self.redaction_color.blue()),
-            security_level=SecurityLevel.CONFIDENTIAL,
+            security_level=self.current_security_level,
             mode=RedactionMode.SMART,
             metadata={"created": datetime.now().isoformat(), "smart_detected": True}
         )
@@ -612,7 +753,7 @@ class RedactionCanvas(QLabel):
             area = RedactionArea(
                 points=points,
                 color=(self.redaction_color.red(), self.redaction_color.green(), self.redaction_color.blue()),
-                security_level=SecurityLevel.CONFIDENTIAL,
+                security_level=self.current_security_level,
                 mode=RedactionMode.RECTANGLE,
                 metadata={"created": datetime.now().isoformat()}
             )
@@ -632,7 +773,7 @@ class RedactionCanvas(QLabel):
             area = RedactionArea(
                 points=points,
                 color=(self.redaction_color.red(), self.redaction_color.green(), self.redaction_color.blue()),
-                security_level=SecurityLevel.CONFIDENTIAL,
+                security_level=self.current_security_level,
                 mode=RedactionMode.FREEHAND,
                 metadata={"created": datetime.now().isoformat()}
             )
@@ -871,6 +1012,7 @@ class BlackoutPDFApp(QMainWindow):
         # UI state
         self.current_theme = self.config.get("ui.default_theme", "light")
         self.current_mode = RedactionMode.RECTANGLE
+        self.current_security_level = SecurityLevel.LEVEL_1
         self.redaction_color = tuple(self.config.get("redaction.default_color", [0, 0, 0]))
         
         # Initialize UI
@@ -1166,6 +1308,29 @@ class BlackoutPDFApp(QMainWindow):
         self.mode_combo.addItems(["▭ Rectangle", "✏️ Freehand", "🧠 Smart", "✋ Move"])
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         layout.addWidget(self.mode_combo)
+        
+        # Security Level selector
+        security_label = QLabel("Security Level:")
+        security_label.setObjectName("control_label")
+        layout.addWidget(security_label)
+        
+        self.security_level_combo = QComboBox()
+        self.security_level_combo.addItems([
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_1),
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_2),
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_3),
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_4),
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_5)
+        ])
+        self.security_level_combo.currentIndexChanged.connect(self._on_security_level_changed)
+        self.security_level_combo.setToolTip("Choose security level for new redactions\nEach level can have different RSA keys")
+        layout.addWidget(self.security_level_combo)
+        
+        # Current level indicator
+        self.current_level_label = QLabel("🎯 New redactions: Level 1")
+        self.current_level_label.setObjectName("control_label")
+        self.current_level_label.setStyleSheet("font-style: italic; color: #666;")
+        layout.addWidget(self.current_level_label)
         
         # Controls
         controls_layout = QHBoxLayout()
@@ -1474,6 +1639,7 @@ class BlackoutPDFApp(QMainWindow):
             pixmap = QPixmap(img_path)
             canvas = RedactionCanvas(pixmap, page_index)
             canvas.set_mode(self.current_mode)
+            canvas.current_security_level = self.current_security_level
             canvas.redaction_added.connect(self._on_redaction_added)
             canvas.redaction_removed.connect(self._on_redaction_removed)
             
@@ -1652,38 +1818,69 @@ class BlackoutPDFApp(QMainWindow):
             y = y_next
     
     def _export_rsa_encrypted_content(self, output_path: str):
-        """Export PDF with RSA-encrypted redaction data - CAPTURE BEFORE DESTROY, then reconstruct perfectly"""
-        if not self.security_module.has_public_key():
-            self._show_warning_dialog("No Public Key", "Please load a PUBLIC key for RSA encryption.")
-            return
-        
+        """Export PDF with MULTI-LEVEL RSA-encrypted redaction data - Each level encrypted separately"""
         try:
-            # Step 1: CAPTURE COMPLETE original content BEFORE any destruction
-            original_content_data = self._capture_complete_original_content()
+            # Step 1: GROUP redactions by security level and capture content
+            content_by_level = self._capture_content_by_security_levels()
             
-            if not original_content_data:
+            if not content_by_level:
                 self._show_warning_dialog("No Redactions", "No redaction areas found. Please add redactions before exporting.")
                 return
             
-            # Step 2: Add verification hash for integrity check
-            verification_data = {
-                "content": original_content_data,
-                "timestamp": datetime.now().isoformat(),
-                "version": "3.0",
-                "integrity_hash": self._calculate_content_hash(original_content_data)
-            }
+            # Step 2: Check which levels can be encrypted (have public keys)
+            encryptable_levels = []
+            missing_keys = []
             
-            # Step 3: RSA-encrypt the complete reconstruction data
-            verification_json = json.dumps(verification_data, ensure_ascii=False).encode('utf-8')
-            encrypted_data = self.security_module.rsa_encrypt_data(verification_json)
+            for level in content_by_level.keys():
+                if self.security_module.has_public_key(level):
+                    encryptable_levels.append(level)
+                else:
+                    missing_keys.append(level)
             
-            # Step 4: Hide encrypted data in PDF using multiple methods for robustness
-            self._hide_encrypted_data_robust(encrypted_data)
+            if missing_keys:
+                missing_names = [SecurityLevel.get_display_name(level) for level in missing_keys]
+                reply = QMessageBox.question(
+                    self, "Missing Public Keys",
+                    f"No public keys found for:\n• {chr(10).join(missing_names)}\n\n"
+                    f"These levels will be exported as regular redactions (not recoverable).\n"
+                    f"Continue with encryption for available levels?",
+                    QMessageBox.Yes | QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
             
-            # Step 5: NOW apply irreversible redactions (DESTROY the original content)
+            # Step 3: Encrypt each level separately
+            encrypted_data_by_level = {}
+            level_info = []
+            
+            for level, content_data in content_by_level.items():
+                if level in encryptable_levels:
+                    # Create verification data for this level
+                    verification_data = {
+                        "level": level.value,
+                        "level_int": level.to_int(),
+                        "content": content_data,
+                        "timestamp": datetime.now().isoformat(),
+                        "version": "3.1-multilevel",
+                        "integrity_hash": self._calculate_content_hash(content_data)
+                    }
+                    
+                    # Encrypt with level-specific key
+                    verification_json = json.dumps(verification_data, ensure_ascii=False).encode('utf-8')
+                    encrypted_data = self.security_module.rsa_encrypt_data(verification_json, level)
+                    encrypted_data_by_level[level] = encrypted_data
+                    
+                    level_info.append(f"• {SecurityLevel.get_display_name(level)}: {len(content_data)} areas encrypted")
+                else:
+                    level_info.append(f"• {SecurityLevel.get_display_name(level)}: {len(content_data)} areas (no encryption - missing key)")
+            
+            # Step 4: Hide encrypted data in PDF using level-specific annotations
+            self._hide_multilevel_encrypted_data(encrypted_data_by_level)
+            
+            # Step 5: Apply irreversible redactions (DESTROY the original content)
             self._apply_irreversible_redactions()
             
-            # Step 6: Save the PDF (readable by everyone, but only "un-redactable" with private key)
+            # Step 6: Save the PDF
             save_options = {
                 'garbage': 4,
                 'deflate': True,
@@ -1692,14 +1889,14 @@ class BlackoutPDFApp(QMainWindow):
             
             self.pdf_document.save(output_path, **save_options)
             
-            # Success message
-            msg = (f"PDF exported with RSA content encryption!\nLocation: {output_path}\n\n"
-                   f"🔒 RSA CONTENT ENCRYPTION APPLIED:\n"
+            # Success message with level details
+            msg = (f"PDF exported with MULTI-LEVEL RSA encryption!\nLocation: {output_path}\n\n"
+                   f"🔒 MULTI-LEVEL ENCRYPTION APPLIED:\n"
                    f"• PDF is readable by everyone\n"
-                   f"• Original content captured and encrypted\n"
-                   f"• Content completely destroyed and hidden\n"
-                   f"• Only PRIVATE key can reconstruct identical content\n"
-                   f"• Multiple verification checks for integrity")
+                   f"• Content encrypted by security level\n"
+                   f"• Each level requires its own private key\n\n"
+                   f"📊 LEVEL SUMMARY:\n" + "\n".join(level_info) + "\n\n"
+                   f"🔑 DECRYPTION: Load private keys for desired levels and use 'Decrypt PDF'")
             
             self._show_info_dialog("RSA Export Success", msg)
             self.status_label.setText(f"RSA Exported: {Path(output_path).name}")
@@ -1707,18 +1904,12 @@ class BlackoutPDFApp(QMainWindow):
         except Exception as e:
             self._show_error_dialog("RSA Export Failed", f"Failed to export with RSA encryption:\n{str(e)}")
     
-    def _capture_complete_original_content(self) -> List[Dict]:
-        """ULTRA-PRECISE capture of ALL original content for perfect reconstruction"""
-        redaction_data = []
+    def _capture_content_by_security_levels(self) -> Dict[SecurityLevel, List[Dict]]:
+        """Capture and group redaction content by security levels"""
+        content_by_level = {}
         
         for canvas in self.canvas_widgets:
             page = self.pdf_document[canvas.page_index]
-            page_data = {
-                "page_index": canvas.page_index,
-                "page_dimensions": [page.rect.width, page.rect.height],
-                "rectangles": [],
-                "polygons": []
-            }
             
             # Get scaling factors with high precision
             page_rect = page.rect
@@ -1726,46 +1917,146 @@ class BlackoutPDFApp(QMainWindow):
             scale_x = page_rect.width / canvas_size.width()
             scale_y = page_rect.height / canvas_size.height()
             
-            # ULTRA-PRECISE rectangle capture
-            for rect in canvas.rectangles:
-                pdf_rect = fitz.Rect(
-                    rect.x() * scale_x,
-                    rect.y() * scale_y,
-                    (rect.x() + rect.width()) * scale_x,
-                    (rect.y() + rect.height()) * scale_y
-                )
+            # Group redaction areas by security level
+            for area in canvas.redaction_areas:
+                level = area.security_level
+                if level not in content_by_level:
+                    content_by_level[level] = []
                 
-                rect_data = self._capture_area_ultra_precise(page, pdf_rect, "rectangle")
-                rect_data.update({
-                    "canvas_coordinates": [rect.x(), rect.y(), rect.width(), rect.height()],
-                    "scale_factors": [scale_x, scale_y],
-                    "color": [canvas.redaction_color.red(), canvas.redaction_color.green(), canvas.redaction_color.blue()]
-                })
-                page_data["rectangles"].append(rect_data)
-            
-            # ULTRA-PRECISE polygon capture
-            for polygon in canvas.polygons:
-                pdf_points = [(pt.x() * scale_x, pt.y() * scale_y) for pt in polygon]
+                # Convert points to PDF coordinates
+                pdf_points = [(int(pt[0] * scale_x), int(pt[1] * scale_y)) for pt in area.points]
                 
                 if pdf_points:
+                    # Calculate bounding box
                     xs, ys = zip(*pdf_points)
-                    bbox = [min(xs), min(ys), max(xs), max(ys)]
-                    pdf_rect = fitz.Rect(bbox)
+                    pdf_rect = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
                     
-                    polygon_data = self._capture_area_ultra_precise(page, pdf_rect, "polygon")
-                    polygon_data.update({
-                        "canvas_coordinates": [[pt.x(), pt.y()] for pt in polygon],
-                        "pdf_coordinates": pdf_points,
+                    # Capture content for this area
+                    area_data = self._capture_area_ultra_precise(page, pdf_rect, area.mode.value)
+                    area_data.update({
+                        "page_index": canvas.page_index,
+                        "security_level": level.value,
+                        "level_int": level.to_int(),
+                        "mode": area.mode.value,
+                        "original_points": area.points,
+                        "pdf_points": pdf_points,
                         "scale_factors": [scale_x, scale_y],
-                        "color": [canvas.redaction_color.red(), canvas.redaction_color.green(), canvas.redaction_color.blue()]
+                        "color": area.color,
+                        "metadata": area.metadata
                     })
-                    page_data["polygons"].append(polygon_data)
+                    
+                    content_by_level[level].append(area_data)
             
-            # Only add page data if it has redactions
-            if page_data["rectangles"] or page_data["polygons"]:
-                redaction_data.append(page_data)
+            # Also handle legacy rectangles and polygons (assign to current level)
+            if canvas.rectangles or canvas.polygons:
+                current_level = canvas.current_security_level
+                if current_level not in content_by_level:
+                    content_by_level[current_level] = []
+                
+                # Handle rectangles
+                for rect in canvas.rectangles:
+                    pdf_rect = fitz.Rect(
+                        rect.x() * scale_x,
+                        rect.y() * scale_y,
+                        (rect.x() + rect.width()) * scale_x,
+                        (rect.y() + rect.height()) * scale_y
+                    )
+                    
+                    area_data = self._capture_area_ultra_precise(page, pdf_rect, "rectangle")
+                    area_data.update({
+                        "page_index": canvas.page_index,
+                        "security_level": current_level.value,
+                        "level_int": current_level.to_int(),
+                        "mode": "rectangle",
+                        "scale_factors": [scale_x, scale_y],
+                        "legacy": True
+                    })
+                    
+                    content_by_level[current_level].append(area_data)
+                
+                # Handle polygons
+                for polygon in canvas.polygons:
+                    pdf_points = [(pt.x() * scale_x, pt.y() * scale_y) for pt in polygon]
+                    if pdf_points:
+                        xs, ys = zip(*pdf_points)
+                        pdf_rect = fitz.Rect(min(xs), min(ys), max(xs), max(ys))
+                        
+                        area_data = self._capture_area_ultra_precise(page, pdf_rect, "polygon")
+                        area_data.update({
+                            "page_index": canvas.page_index,
+                            "security_level": current_level.value,
+                            "level_int": current_level.to_int(),
+                            "mode": "polygon",
+                            "pdf_points": pdf_points,
+                            "scale_factors": [scale_x, scale_y],
+                            "legacy": True
+                        })
+                        
+                        content_by_level[current_level].append(area_data)
         
-        return redaction_data
+        logger.info(f"Captured content for {len(content_by_level)} security levels")
+        for level, areas in content_by_level.items():
+            logger.info(f"  {SecurityLevel.get_display_name(level)}: {len(areas)} areas")
+        
+        return content_by_level
+    
+    def _hide_multilevel_encrypted_data(self, encrypted_data_by_level: Dict[SecurityLevel, bytes]):
+        """Hide encrypted data for multiple security levels using level-specific annotations"""
+        if not encrypted_data_by_level:
+            return
+        
+        first_page = self.pdf_document[0]
+        
+        for level, encrypted_data in encrypted_data_by_level.items():
+            level_int = level.to_int()
+            encoded_data = base64.b64encode(encrypted_data).decode('ascii')
+            
+            # Method 1: Level-specific hidden annotation
+            annotation_rect = fitz.Rect(-10 - level_int, -10 - level_int, -1 - level_int, -1 - level_int)
+            annot = first_page.add_text_annot(annotation_rect.tl, f"level_{level_int}")
+            annot.set_info(title=f"RSA_LEVEL_{level_int}_CONTENT", content=encoded_data)
+            annot.update()
+            
+            # Method 2: Split data across multiple chunks for robustness
+            data_chunks = [encoded_data[i:i+800] for i in range(0, len(encoded_data), 800)]
+            for i, chunk in enumerate(data_chunks):
+                pos = fitz.Point(-5 - level_int - i*0.1, -5 - level_int - i*0.1)
+                first_page.insert_text(pos, f"L{level_int}_CHUNK_{i}:{chunk}", fontsize=0.1, color=(1, 1, 1))
+            
+            # Method 3: Level-specific checksum
+            import hashlib
+            checksum = hashlib.md5(encrypted_data).hexdigest()
+            checksum_rect = fitz.Rect(-20 - level_int, -20 - level_int, -15 - level_int, -15 - level_int)
+            checksum_annot = first_page.add_text_annot(checksum_rect.tl, f"checksum_{level_int}")
+            checksum_annot.set_info(title=f"RSA_LEVEL_{level_int}_CHECKSUM", content=checksum)
+            checksum_annot.update()
+            
+            logger.info(f"Hidden encrypted data for {SecurityLevel.get_display_name(level)}")
+        
+        # Add level summary annotation
+        level_summary = {
+            "version": "3.1-multilevel",
+            "levels": [level.to_int() for level in encrypted_data_by_level.keys()],
+            "timestamp": datetime.now().isoformat()
+        }
+        summary_json = json.dumps(level_summary)
+        summary_rect = fitz.Rect(-30, -30, -25, -25)
+        summary_annot = first_page.add_text_annot(summary_rect.tl, "multilevel_summary")
+        summary_annot.set_info(title="RSA_MULTILEVEL_SUMMARY", content=summary_json)
+        summary_annot.update()
+    
+    def _capture_complete_original_content(self) -> List[Dict]:
+        """LEGACY METHOD - Use _capture_content_by_security_levels for new multilevel system"""
+        # Convert new multilevel system to old format for backward compatibility
+        content_by_level = self._capture_content_by_security_levels()
+        
+        # Combine all levels into single list (legacy format)
+        all_content = []
+        for level_content in content_by_level.values():
+            all_content.extend(level_content)
+        
+        return all_content
+    
     
     def _capture_area_ultra_precise(self, page, pdf_rect: fitz.Rect, area_type: str) -> Dict:
         """Ultra-precise capture of a specific area with ALL content types"""
@@ -1941,34 +2232,89 @@ class BlackoutPDFApp(QMainWindow):
     # ==========================================
     
     def generate_rsa_keys(self):
-        """Generate RSA key pair and auto-load them"""
-        # Choose key size
-        key_size, ok = QInputDialog.getItem(
-            self, "RSA Key Size", "Choose key size:", ["2048", "3072", "4096"], 0, False
-        )
+        """Generate RSA key pair for specific security level"""
+        # Create custom dialog for key generation
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Generate RSA Keys")
+        dialog.setModal(True)
+        dialog.resize(400, 300)
         
-        if not ok:
+        layout = QVBoxLayout(dialog)
+        
+        # Security level selection
+        level_label = QLabel("Security Level:")
+        level_combo = QComboBox()
+        level_combo.addItems([
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_1),
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_2),
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_3),
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_4),
+            SecurityLevel.get_display_name(SecurityLevel.LEVEL_5)
+        ])
+        level_combo.setCurrentIndex(self.current_security_level.to_int() - 1)
+        
+        layout.addWidget(level_label)
+        layout.addWidget(level_combo)
+        
+        # Key size selection
+        size_label = QLabel("Key Size:")
+        size_combo = QComboBox()
+        size_combo.addItems(["2048", "3072", "4096"])
+        size_combo.setCurrentIndex(0)
+        
+        layout.addWidget(size_label)
+        layout.addWidget(size_combo)
+        
+        # Info label
+        info_label = QLabel("This will generate a new RSA key pair for the selected security level.\nExisting keys for this level will be replaced.")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #666; font-style: italic; margin: 10px 0;")
+        layout.addWidget(info_label)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(dialog.reject)
+        
+        generate_btn = QPushButton("Generate Keys")
+        generate_btn.setDefault(True)
+        generate_btn.clicked.connect(dialog.accept)
+        
+        button_layout.addWidget(cancel_btn)
+        button_layout.addWidget(generate_btn)
+        layout.addLayout(button_layout)
+        
+        if dialog.exec_() != QDialog.Accepted:
             return
         
         try:
-            # Generate keys
-            private_pem, public_pem = self.security_module.generate_rsa_keypair(int(key_size))
+            # Get selected values
+            selected_level = SecurityLevel.from_int(level_combo.currentIndex() + 1)
+            selected_size = int(size_combo.currentText())
             
-            # Auto-load the generated keys
+            # Generate keys for specific level
+            private_pem, public_pem = self.security_module.generate_rsa_keypair(selected_level, selected_size)
+            
+            # Update RSA status
             self._update_rsa_status()
             
-            # Optionally save keys to files
+            # Show success and offer to save
+            level_name = SecurityLevel.get_display_name(selected_level)
             reply = QMessageBox.question(
-                self, "Save Keys", 
-                "Keys generated and loaded successfully!\n\nDo you want to save them to files?",
+                self, "Keys Generated", 
+                f"RSA keys generated and loaded for {level_name}!\n\n"
+                f"Key size: {selected_size} bits\n\n"
+                f"Do you want to save them to files?",
                 QMessageBox.Yes | QMessageBox.No
             )
             
             if reply == QMessageBox.Yes:
                 save_dir = QFileDialog.getExistingDirectory(self, "Save RSA Keys")
                 if save_dir:
-                    private_path = Path(save_dir) / "rsa_private_key.pem"
-                    public_path = Path(save_dir) / "rsa_public_key.pem"
+                    level_int = selected_level.to_int()
+                    private_path = Path(save_dir) / f"rsa_private_level_{level_int}.pem"
+                    public_path = Path(save_dir) / f"rsa_public_level_{level_int}.pem"
                     
                     with open(private_path, 'wb') as f:
                         f.write(private_pem)
@@ -1977,9 +2323,10 @@ class BlackoutPDFApp(QMainWindow):
                     
                     self._show_info_dialog(
                         "Keys Saved", 
-                        f"RSA keys saved successfully!\n\n"
-                        f"Private key: {private_path}\n"
-                        f"Public key: {public_path}\n\n"
+                        f"RSA keys saved for {level_name}!\n\n"
+                        f"Private key: {private_path.name}\n"
+                        f"Public key: {public_path.name}\n"
+                        f"Location: {save_dir}\n\n"
                         "⚠️ Keep your private key secure!"
                     )
             
@@ -1991,7 +2338,8 @@ class BlackoutPDFApp(QMainWindow):
             self._show_error_dialog("Key Generation Failed", str(e))
     
     def load_private_key(self):
-        """Load RSA private key for decryption"""
+        """Load RSA private key for specific security level"""
+        # First select the file
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Load Private Key (for decryption)", "", "PEM Files (*.pem);;All Files (*)"
         )
@@ -1999,20 +2347,52 @@ class BlackoutPDFApp(QMainWindow):
         if not file_path:
             return
         
+        # Then choose security level
+        level_name, ok = QInputDialog.getItem(
+            self, "Security Level", 
+            "Choose security level for this private key:",
+            [SecurityLevel.get_display_name(SecurityLevel.LEVEL_1),
+             SecurityLevel.get_display_name(SecurityLevel.LEVEL_2),
+             SecurityLevel.get_display_name(SecurityLevel.LEVEL_3),
+             SecurityLevel.get_display_name(SecurityLevel.LEVEL_4),
+             SecurityLevel.get_display_name(SecurityLevel.LEVEL_5)],
+            self.current_security_level.to_int() - 1, False
+        )
+        
+        if not ok:
+            return
+        
         try:
             with open(file_path, 'rb') as f:
                 private_pem = f.read()
             
-            self.security_module.load_private_key(private_pem)
+            # Determine selected level
+            level_index = [SecurityLevel.get_display_name(SecurityLevel.LEVEL_1),
+                          SecurityLevel.get_display_name(SecurityLevel.LEVEL_2),
+                          SecurityLevel.get_display_name(SecurityLevel.LEVEL_3),
+                          SecurityLevel.get_display_name(SecurityLevel.LEVEL_4),
+                          SecurityLevel.get_display_name(SecurityLevel.LEVEL_5)].index(level_name)
+            selected_level = SecurityLevel.from_int(level_index + 1)
+            
+            self.security_module.load_private_key(private_pem, selected_level)
             self._update_rsa_status()
             
-            self._show_info_dialog("Private Key Loaded", "PRIVATE key loaded successfully!\n\nYou can now:\n• Decrypt RSA-encrypted PDFs (that were encrypted with the corresponding PUBLIC key)\n• Use 'Decrypt PDF' button to open encrypted documents")
+            level_display = SecurityLevel.get_display_name(selected_level)
+            self._show_info_dialog(
+                "Private Key Loaded", 
+                f"PRIVATE key loaded for {level_display}!\n\n"
+                f"File: {Path(file_path).name}\n\n"
+                f"You can now:\n"
+                f"• Decrypt {level_display} content in RSA PDFs\n"
+                f"• Use 'Decrypt PDF' for automatic multi-level decryption"
+            )
             
         except Exception as e:
             self._show_error_dialog("Key Loading Failed", str(e))
     
     def load_public_key(self):
-        """Load RSA public key for encryption"""
+        """Load RSA public key for specific security level"""
+        # First select the file
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Load Public Key (for encryption)", "", "PEM Files (*.pem);;All Files (*)"
         )
@@ -2020,18 +2400,49 @@ class BlackoutPDFApp(QMainWindow):
         if not file_path:
             return
         
+        # Then choose security level
+        level_name, ok = QInputDialog.getItem(
+            self, "Security Level", 
+            "Choose security level for this public key:",
+            [SecurityLevel.get_display_name(SecurityLevel.LEVEL_1),
+             SecurityLevel.get_display_name(SecurityLevel.LEVEL_2),
+             SecurityLevel.get_display_name(SecurityLevel.LEVEL_3),
+             SecurityLevel.get_display_name(SecurityLevel.LEVEL_4),
+             SecurityLevel.get_display_name(SecurityLevel.LEVEL_5)],
+            self.current_security_level.to_int() - 1, False
+        )
+        
+        if not ok:
+            return
+        
         try:
             with open(file_path, 'rb') as f:
                 public_pem = f.read()
             
-            self.security_module.load_public_key(public_pem)
+            # Determine selected level
+            level_index = [SecurityLevel.get_display_name(SecurityLevel.LEVEL_1),
+                          SecurityLevel.get_display_name(SecurityLevel.LEVEL_2),
+                          SecurityLevel.get_display_name(SecurityLevel.LEVEL_3),
+                          SecurityLevel.get_display_name(SecurityLevel.LEVEL_4),
+                          SecurityLevel.get_display_name(SecurityLevel.LEVEL_5)].index(level_name)
+            selected_level = SecurityLevel.from_int(level_index + 1)
+            
+            self.security_module.load_public_key(public_pem, selected_level)
             self._update_rsa_status()
             
             # Enable RSA export if PDF is loaded
             if self.pdf_document:
                 self.export_rsa_btn.setEnabled(True)
             
-            self._show_info_dialog("Public Key Loaded", "PUBLIC key loaded successfully!\n\nYou can now:\n• Encrypt PDFs with RSA (creates password-protected PDF + .key file)\n• Use 'Save PDF (RSA)' button to create encrypted documents")
+            level_display = SecurityLevel.get_display_name(selected_level)
+            self._show_info_dialog(
+                "Public Key Loaded", 
+                f"PUBLIC key loaded for {level_display}!\n\n"
+                f"File: {Path(file_path).name}\n\n"
+                f"You can now:\n"
+                f"• Encrypt {level_display} redactions in RSA PDFs\n"
+                f"• Use 'Save PDF (RSA)' for multi-level encryption"
+            )
             
         except Exception as e:
             self._show_error_dialog("Key Loading Failed", str(e))
@@ -2070,53 +2481,291 @@ class BlackoutPDFApp(QMainWindow):
             self._show_error_dialog("PDF Analysis Failed", f"Failed to analyze PDF encryption:\n{str(e)}")
     
     def _decrypt_rsa_content(self, pdf_path: str):
-        """Decrypt RSA-encrypted redaction content - restores original content"""
+        """Decrypt MULTI-LEVEL RSA-encrypted redaction content - automatically restores all accessible levels"""
         try:
             # Open the PDF (should be readable by everyone)
             self.pdf_document = fitz.open(pdf_path)
             
-            # Get encrypted redaction data from hidden annotation
-            encrypted_data = self._get_rsa_encrypted_data(self.pdf_document)
-            if not encrypted_data:
-                self._show_error_dialog("No Encrypted Content", "This PDF does not contain RSA-encrypted redaction data.")
-                return
+            # Check if this is a multilevel encrypted PDF
+            level_summary = self._get_multilevel_summary(self.pdf_document)
             
-            # Decrypt with RSA private key
-            decrypted_json = self.security_module.rsa_decrypt_data(encrypted_data).decode('utf-8')
-            verification_data = json.loads(decrypted_json)
-            
-            # Restore original content to the PDF using complete verification data
-            self._restore_original_content(verification_data)
-            
-            # Update document display
-            self.pdf_path = pdf_path
-            self._clear_document_view()
-            self._load_pdf_pages()
-            
-            # Update UI state
-            self.state_panel.update_document_state(True, pdf_path, len(self.pdf_document))
-            self.export_plain_btn.setEnabled(True)
-            self.export_password_btn.setEnabled(True)
-            if self.security_module.has_public_key():
-                self.export_rsa_btn.setEnabled(True)
-            
-            # Success message
-            self._show_info_dialog(
-                "Content Decryption Success", 
-                f"RSA content decryption successful!\n\n"
-                f"📄 Original content has been restored\n"
-                f"🔓 Redactions removed using PRIVATE key\n"
-                f"💾 Document is now un-redacted and editable\n\n"
-                f"Location: {pdf_path}"
-            )
-            
-            self.status_label.setText(f"RSA Content Decrypted: {Path(pdf_path).name}")
-            
+            if level_summary:
+                # NEW MULTILEVEL SYSTEM
+                available_levels = level_summary.get("levels", [])
+                self._decrypt_multilevel_content(pdf_path, available_levels)
+            else:
+                # LEGACY SINGLE-LEVEL SYSTEM
+                self._decrypt_legacy_single_level(pdf_path)
+                
         except Exception as e:
             if self.pdf_document:
                 self.pdf_document.close()
                 self.pdf_document = None
             self._show_error_dialog("Content Decryption Failed", f"Failed to decrypt RSA content:\n{str(e)}")
+    
+    def _decrypt_multilevel_content(self, pdf_path: str, available_levels: List[int]):
+        """Decrypt multilevel RSA content automatically based on loaded private keys"""
+        logger.info(f"Processing multilevel PDF with {len(available_levels)} security levels")
+        
+        # Get encrypted data for all levels
+        encrypted_data_by_level = self._get_multilevel_encrypted_data(self.pdf_document, available_levels)
+        
+        if not encrypted_data_by_level:
+            self._show_error_dialog("No Encrypted Content", "This multilevel PDF does not contain any readable encrypted data.")
+            return
+        
+        # Attempt to decrypt all levels for which we have private keys
+        decrypted_data_by_level = self.security_module.decrypt_all_accessible_levels(encrypted_data_by_level)
+        
+        if not decrypted_data_by_level:
+            loaded_levels = self.security_module.get_loaded_levels()
+            missing_levels = [SecurityLevel.from_int(level) for level in available_levels]
+            missing_names = [SecurityLevel.get_display_name(level) for level in missing_levels]
+            
+            self._show_warning_dialog(
+                "No Accessible Levels", 
+                f"Cannot decrypt any security levels.\n\n"
+                f"Available levels in PDF:\n• {chr(10).join([SecurityLevel.get_display_name(SecurityLevel.from_int(l)) for l in available_levels])}\n\n"
+                f"Loaded private keys:\n• {chr(10).join([SecurityLevel.get_display_name(l) for l in loaded_levels['private_keys']]) if loaded_levels['private_keys'] else 'None'}\n\n"
+                f"Load the appropriate private keys and try again."
+            )
+            return
+        
+        # Process decrypted data and restore content
+        restored_levels = []
+        failed_levels = []
+        
+        for level, decrypted_data in decrypted_data_by_level.items():
+            try:
+                verification_data = json.loads(decrypted_data.decode('utf-8'))
+                self._restore_multilevel_content(verification_data, level)
+                restored_levels.append(level)
+                logger.info(f"Successfully restored {SecurityLevel.get_display_name(level)}")
+            except Exception as e:
+                failed_levels.append(level)
+                logger.error(f"Failed to restore {SecurityLevel.get_display_name(level)}: {e}")
+        
+        # Update document display
+        self.pdf_path = pdf_path
+        self._clear_document_view()
+        self._load_pdf_pages()
+        
+        # Update UI state
+        self.state_panel.update_document_state(True, pdf_path, len(self.pdf_document))
+        self.export_plain_btn.setEnabled(True)
+        self.export_password_btn.setEnabled(True)
+        if any(self.security_module.has_public_key(level) for level in [SecurityLevel.LEVEL_1, SecurityLevel.LEVEL_2, SecurityLevel.LEVEL_3, SecurityLevel.LEVEL_4, SecurityLevel.LEVEL_5]):
+            self.export_rsa_btn.setEnabled(True)
+        
+        # Comprehensive success message
+        restored_names = [SecurityLevel.get_display_name(level) for level in restored_levels]
+        failed_names = [SecurityLevel.get_display_name(level) for level in failed_levels]
+        inaccessible_levels = [level for level in available_levels if SecurityLevel.from_int(level) not in restored_levels]
+        inaccessible_names = [SecurityLevel.get_display_name(SecurityLevel.from_int(level)) for level in inaccessible_levels]
+        
+        msg = f"🔓 MULTI-LEVEL RSA DECRYPTION COMPLETED!\n\n"
+        
+        if restored_levels:
+            msg += f"✅ SUCCESSFULLY RESTORED ({len(restored_levels)} levels):\n• " + "\n• ".join(restored_names) + "\n\n"
+        
+        if inaccessible_names:
+            msg += f"🔒 STILL ENCRYPTED ({len(inaccessible_names)} levels):\n• " + "\n• ".join(inaccessible_names) + "\n• Load corresponding private keys to decrypt\n\n"
+        
+        if failed_names:
+            msg += f"❌ RESTORATION FAILED ({len(failed_names)} levels):\n• " + "\n• ".join(failed_names) + "\n\n"
+        
+        msg += f"📄 Document: {Path(pdf_path).name}\n💾 Ready for editing and export"
+        
+        self._show_info_dialog("Multilevel Decryption Results", msg)
+        self.status_label.setText(f"Multilevel Decrypted: {len(restored_levels)}/{len(available_levels)} levels")
+    
+    def _decrypt_legacy_single_level(self, pdf_path: str):
+        """Decrypt legacy single-level RSA content"""
+        # Get encrypted redaction data from hidden annotation
+        encrypted_data = self._get_rsa_encrypted_data(self.pdf_document)
+        if not encrypted_data:
+            self._show_error_dialog("No Encrypted Content", "This PDF does not contain RSA-encrypted redaction data.")
+            return
+        
+        # Decrypt with RSA private key
+        try:
+            decrypted_data, level = self.security_module.rsa_decrypt_data(encrypted_data)
+            verification_data = json.loads(decrypted_data.decode('utf-8'))
+        except:
+            # Fallback to legacy decryption without level
+            decrypted_json = self.security_module.rsa_decrypt_data(encrypted_data).decode('utf-8')
+            verification_data = json.loads(decrypted_json)
+        
+        # Restore original content to the PDF using complete verification data
+        self._restore_original_content(verification_data)
+        
+        # Update document display
+        self.pdf_path = pdf_path
+        self._clear_document_view()
+        self._load_pdf_pages()
+        
+        # Update UI state
+        self.state_panel.update_document_state(True, pdf_path, len(self.pdf_document))
+        self.export_plain_btn.setEnabled(True)
+        self.export_password_btn.setEnabled(True)
+        if self.security_module.has_public_key():
+            self.export_rsa_btn.setEnabled(True)
+        
+        # Success message
+        self._show_info_dialog(
+            "Legacy Content Decryption Success", 
+            f"RSA content decryption successful!\n\n"
+            f"📄 Original content has been restored\n"
+            f"🔓 Redactions removed using PRIVATE key\n"
+            f"💾 Document is now un-redacted and editable\n\n"
+            f"Location: {pdf_path}"
+        )
+        
+        self.status_label.setText(f"RSA Content Decrypted: {Path(pdf_path).name}")
+    
+    def _get_multilevel_summary(self, doc) -> Optional[Dict]:
+        """Get multilevel summary from PDF if it exists"""
+        try:
+            if len(doc) > 0:
+                first_page = doc[0]
+                for annot in first_page.annots():
+                    if annot.info.get("title") == "RSA_MULTILEVEL_SUMMARY":
+                        summary_json = annot.info.get("content", "")
+                        if summary_json:
+                            return json.loads(summary_json)
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to get multilevel summary: {e}")
+            return None
+    
+    def _get_multilevel_encrypted_data(self, doc, available_levels: List[int]) -> Dict[SecurityLevel, bytes]:
+        """Get encrypted data for all available security levels"""
+        encrypted_data_by_level = {}
+        
+        try:
+            first_page = doc[0]
+            
+            for level_int in available_levels:
+                level = SecurityLevel.from_int(level_int)
+                
+                # Method 1: Try to get from level-specific annotation
+                for annot in first_page.annots():
+                    if annot.info.get("title") == f"RSA_LEVEL_{level_int}_CONTENT":
+                        encoded_data = annot.info.get("content", "")
+                        if encoded_data:
+                            try:
+                                encrypted_data = base64.b64decode(encoded_data.encode('ascii'))
+                                
+                                # Verify with level-specific checksum
+                                if self._verify_multilevel_data_integrity(doc, encrypted_data, level_int):
+                                    encrypted_data_by_level[level] = encrypted_data
+                                    logger.info(f"Retrieved encrypted data for {SecurityLevel.get_display_name(level)}")
+                                    break
+                                else:
+                                    logger.warning(f"Data integrity check failed for {SecurityLevel.get_display_name(level)}, trying backup methods")
+                            except Exception as e:
+                                logger.warning(f"Failed to decode data for {SecurityLevel.get_display_name(level)}: {e}")
+                
+                # Method 2: Fallback - reconstruct from chunks if annotation failed
+                if level not in encrypted_data_by_level:
+                    chunks = {}
+                    text_dict = first_page.get_text("dict")
+                    for block in text_dict.get("blocks", []):
+                        for line in block.get("lines", []):
+                            for span in line.get("spans", []):
+                                text = span.get("text", "")
+                                if text.startswith(f"L{level_int}_CHUNK_"):
+                                    try:
+                                        chunk_id = int(text.split(":")[0].replace(f"L{level_int}_CHUNK_", ""))
+                                        chunk_data = text.split(":", 1)[1]
+                                        chunks[chunk_id] = chunk_data
+                                    except:
+                                        continue
+                    
+                    if chunks:
+                        # Reconstruct from chunks
+                        sorted_chunks = [chunks[i] for i in sorted(chunks.keys())]
+                        encoded_data = "".join(sorted_chunks)
+                        try:
+                            encrypted_data = base64.b64decode(encoded_data.encode('ascii'))
+                            if self._verify_multilevel_data_integrity(doc, encrypted_data, level_int):
+                                encrypted_data_by_level[level] = encrypted_data
+                                logger.info(f"Retrieved encrypted data for {SecurityLevel.get_display_name(level)} from chunks")
+                        except Exception as e:
+                            logger.warning(f"Failed to reconstruct data for {SecurityLevel.get_display_name(level)}: {e}")
+            
+        except Exception as e:
+            logger.error(f"Failed to get multilevel encrypted data: {e}")
+        
+        return encrypted_data_by_level
+    
+    def _verify_multilevel_data_integrity(self, doc, encrypted_data: bytes, level_int: int) -> bool:
+        """Verify data integrity for specific security level"""
+        try:
+            first_page = doc[0]
+            for annot in first_page.annots():
+                if annot.info.get("title") == f"RSA_LEVEL_{level_int}_CHECKSUM":
+                    stored_checksum = annot.info.get("content", "")
+                    
+                    # Calculate current checksum
+                    import hashlib
+                    current_checksum = hashlib.md5(encrypted_data).hexdigest()
+                    
+                    return stored_checksum == current_checksum
+            return True  # No checksum found, assume valid
+        except:
+            return True  # If verification fails, assume valid
+    
+    def _restore_multilevel_content(self, verification_data: Dict, level: SecurityLevel):
+        """Restore content for a specific security level"""
+        try:
+            content_data = verification_data["content"]
+            
+            # Verify integrity
+            stored_hash = verification_data["integrity_hash"]
+            current_hash = self._calculate_content_hash(content_data)
+            
+            if stored_hash != current_hash:
+                raise Exception(f"Data integrity check failed for {SecurityLevel.get_display_name(level)}")
+            
+            logger.info(f"Integrity verified for {SecurityLevel.get_display_name(level)} - restoring {len(content_data)} areas")
+            
+            # Restore all areas for this level
+            for area_data in content_data:
+                page_index = area_data["page_index"]
+                page = self.pdf_document[page_index]
+                
+                # Restore content based on area type
+                if area_data.get("mode") == "rectangle" or area_data.get("type") == "rectangle":
+                    self._restore_rectangle_content_perfect(page, area_data)
+                elif area_data.get("mode") == "polygon" or area_data.get("type") == "polygon":
+                    self._restore_polygon_content_perfect(page, area_data)
+                else:
+                    # Default restoration method
+                    self._restore_area_content_generic(page, area_data)
+            
+            logger.info(f"Successfully restored all content for {SecurityLevel.get_display_name(level)}")
+            
+        except Exception as e:
+            logger.error(f"Failed to restore content for {SecurityLevel.get_display_name(level)}: {e}")
+            raise
+    
+    def _restore_area_content_generic(self, page, area_data: Dict):
+        """Generic content restoration for any area type"""
+        try:
+            bbox = area_data["bbox"]
+            pdf_rect = fitz.Rect(bbox)
+            
+            # Clear area and restore using available methods
+            self._clear_area_surgical(page, pdf_rect)
+            
+            # Try multiple restoration methods
+            if not self._restore_precise_elements(page, area_data):
+                if not self._restore_pixmap_ultra_precise(page, area_data):
+                    self._restore_background_context(page, area_data)
+            
+        except Exception as e:
+            logger.warning(f"Failed generic area restoration: {e}")
     
     def _decrypt_rsa_password_protected(self, pdf_path: str):
         """Decrypt old-style RSA password-protected PDF"""
@@ -2837,10 +3486,32 @@ class BlackoutPDFApp(QMainWindow):
             return True  # If verification fails, assume valid
     
     def _update_rsa_status(self):
-        """Update RSA status in state panel"""
+        """Update RSA status in state panel with multilevel information"""
+        # Get comprehensive key information
+        loaded_levels = self.security_module.get_loaded_levels()
+        
+        # For backward compatibility, check current level keys
         has_private = self.security_module.has_private_key()
         has_public = self.security_module.has_public_key()
+        
+        # Update state panel (keep existing interface)
         self.state_panel.update_rsa_state(has_private, has_public)
+        
+        # Show detailed multilevel status in log
+        if loaded_levels["private_keys"] or loaded_levels["public_keys"]:
+            private_names = [SecurityLevel.get_display_name(level) for level in loaded_levels["private_keys"]]
+            public_names = [SecurityLevel.get_display_name(level) for level in loaded_levels["public_keys"]]
+            complete_names = [SecurityLevel.get_display_name(level) for level in loaded_levels["complete_pairs"]]
+            
+            status_msg = "📊 MULTILEVEL KEY STATUS:\n"
+            if private_names:
+                status_msg += f"🔓 Private keys: {', '.join(private_names)}\n"
+            if public_names:
+                status_msg += f"🔐 Public keys: {', '.join(public_names)}\n"
+            if complete_names:
+                status_msg += f"✅ Complete pairs: {', '.join(complete_names)}\n"
+            
+            logger.info(status_msg)
     
     # ==========================================
     # UI EVENT HANDLERS / GESTIONNAIRES D'ÉVÉNEMENTS UI
@@ -2903,6 +3574,25 @@ class BlackoutPDFApp(QMainWindow):
             canvas.set_mode(self.current_mode)
         
         self.state_panel.update_mode(self.current_mode)
+    
+    def _on_security_level_changed(self, index: int):
+        """Handle security level change"""
+        levels = [SecurityLevel.LEVEL_1, SecurityLevel.LEVEL_2, SecurityLevel.LEVEL_3, 
+                 SecurityLevel.LEVEL_4, SecurityLevel.LEVEL_5]
+        self.current_security_level = levels[index]
+        
+        # Update security module's current level
+        self.security_module.set_current_level(self.current_security_level)
+        
+        # Update UI indicator
+        level_name = SecurityLevel.get_display_name(self.current_security_level)
+        self.current_level_label.setText(f"🎯 New redactions: {level_name}")
+        
+        # Update canvas widgets with new security level
+        for canvas in self.canvas_widgets:
+            canvas.current_security_level = self.current_security_level
+        
+        logger.info(f"Security level changed to: {level_name}")
     
     def adjust_zoom(self, factor: float):
         """Adjust zoom level"""
