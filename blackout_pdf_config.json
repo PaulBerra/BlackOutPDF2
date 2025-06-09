@@ -1,0 +1,36 @@
+{
+    "window": {
+        "width": 1400,
+        "height": 625,
+        "min_width": 1000,
+        "min_height": 600,
+        "center_on_screen": true,
+        "remember_position": false,
+        "sidebar_width": 400
+    },
+    "ui": {
+        "default_theme": "light",
+        "sidebar_width": 350,
+        "default_redaction_mode": "rectangle",
+        "auto_zoom_fit": true
+    },
+    "security": {
+        "default_key_size": 2048,
+        "auto_load_generated_keys": true,
+        "warn_on_plain_export": true
+    },
+    "redaction": {
+        "default_color": [
+            0,
+            0,
+            0
+        ],
+        "polygon_precision": 2,
+        "preview_opacity": 100
+    },
+    "files": {
+        "temp_cleanup_on_exit": true,
+        "remember_last_directory": true,
+        "auto_suggest_filename": true
+    }
+}
