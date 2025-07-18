@@ -8,7 +8,7 @@ Modular PDF redaction application with advanced security features
 Application modulaire de caviardage PDF avec fonctionnalités de sécurité avancées
 
 Author: Alexis SAUVAGE - Paul BERRA
-Version: 3.0
+Version: 2.0
 License: MIT
 """
 
