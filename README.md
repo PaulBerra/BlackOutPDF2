@@ -5,6 +5,24 @@
 
 BlackOutPDF introduces a groundbreaking approach to document security: **RSA Content Encryption**. Unlike traditional tools that simply password-protect PDFs, BlackOutPDF encrypts the actual redacted content itself, allowing universal document access while restricting content restoration to authorized users only.
 
+## Quick Start Guide
+
+### Installation
+```bash
+# Clone or download BlackOutPDF
+cd BlackOutPDF2
+
+python3 -m venv venv
+source venv/bin/activate
+# or
+# .\venv\Scripts\activate
+# Install dependencies
+pip install -r requirements.txt
+
+# Launch application
+python3 BOPDF.py.py
+```
+
 ##  Features :
 
 ### **RSA Content Encryption Technology**
@@ -33,24 +51,6 @@ BlackOutPDF introduces a groundbreaking approach to document security: **RSA Con
 - **Reversible redaction**: Original content preserved and encrypted
 - **Granular control**: Individual content restoration by authorized users
 - **Future-proof**: Content remains accessible to key holders indefinitely
-
-## Quick Start Guide
-
-### Installation
-```bash
-# Clone or download BlackOutPDF
-cd BlackOutPDF2
-
-python3 -m venv venv
-source venv/bin/activate
-# or
-# .\venv\Scripts\activate
-# Install dependencies
-pip install -r requirements.txt
-
-# Launch application
-python3 BOPDF2.py.py
-```
 
 ### Basic Workflow
 1. **Load Document**: Open your PDF file
