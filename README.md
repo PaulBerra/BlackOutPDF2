@@ -28,7 +28,6 @@ BlackOutPDF introduces a groundbreaking approach to document security: **RSA Con
 ### **Traditional Redaction Problems Solved**
 - **Standard tools**: Permanent content destruction
 - **Password protection**: All-or-nothing access control
-- **Manual processes**: Time-consuming and error-prone
 
 ### **BlackOutPDF Advantages**
 - **Reversible redaction**: Original content preserved and encrypted
@@ -42,11 +41,15 @@ BlackOutPDF introduces a groundbreaking approach to document security: **RSA Con
 # Clone or download BlackOutPDF
 cd BlackOutPDF2
 
+python3 -m venv venv
+source venv/bin/activate
+# or
+# .\venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
 # Launch application
-python main.py
+python3 BOPDF2.py.py
 ```
 
 ### Basic Workflow
