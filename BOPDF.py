@@ -768,13 +768,13 @@ class StatePanel(QWidget):
         layout.addWidget(self.doc_group)
         
         # RSA Keys state
-        self.rsa_group = QGroupBox("🔑 RSA Keys")
+        self.rsa_group = QGroupBox("RSA Keys")
         rsa_layout = QVBoxLayout(self.rsa_group)
         
-        self.private_key_status = QLabel("❌ Private key: Not loaded")
-        self.public_key_status = QLabel("❌ Public key: Not loaded")
-        self.encryption_status = QLabel("❌ Encryption: Not ready")
-        self.decryption_status = QLabel("❌ Decryption: Not ready")
+        self.private_key_status = QLabel("Private key: Not loaded")
+        self.public_key_status = QLabel("Public key: Not loaded")
+        self.encryption_status = QLabel("Encryption: Not ready")
+        self.decryption_status = QLabel("Decryption: Not ready")
         
         rsa_layout.addWidget(self.private_key_status)
         rsa_layout.addWidget(self.public_key_status)
@@ -783,7 +783,7 @@ class StatePanel(QWidget):
         layout.addWidget(self.rsa_group)
         
         # Redaction state
-        self.redaction_group = QGroupBox("🎯 Redaction")
+        self.redaction_group = QGroupBox("Redaction")
         redaction_layout = QVBoxLayout(self.redaction_group)
         
         self.redaction_count = QLabel("Redaction areas: 0")
@@ -802,11 +802,11 @@ class StatePanel(QWidget):
         self.state.pdf_pages = pages
         
         if pdf_loaded:
-            self.pdf_status.setText("✅ PDF loaded")
+            self.pdf_status.setText("PDF loaded")
             filename = Path(pdf_path).name if pdf_path else "Unknown"
             self.pdf_info.setText(f"File: {filename}\nPages: {pages}")
         else:
-            self.pdf_status.setText("❌ No PDF loaded")
+            self.pdf_status.setText("No PDF loaded")
             self.pdf_info.setText("")
     
     def update_rsa_state(self, private_key: bool, public_key: bool):
@@ -819,16 +819,16 @@ class StatePanel(QWidget):
         
         # Update UI
         self.private_key_status.setText(
-            "✅ Private key: Loaded" if private_key else "❌ Private key: Not loaded"
+            "Private key: Loaded" if private_key else "Private key: Not loaded"
         )
         self.public_key_status.setText(
-            "✅ Public key: Loaded" if public_key else "❌ Public key: Not loaded"
+            "Public key: Loaded" if public_key else "Public key: Not loaded"
         )
         self.encryption_status.setText(
-            "✅ Encryption: Ready" if public_key else "❌ Encryption: Not ready"
+            "Encryption: Ready" if public_key else "Encryption: Not ready"
         )
         self.decryption_status.setText(
-            "✅ Decryption: Ready" if private_key else "❌ Decryption: Not ready"
+            "Decryption: Ready" if private_key else "Decryption: Not ready"
         )
     
     def update_redaction_count(self, count: int):
@@ -980,23 +980,23 @@ class BlackoutPDFApp(QMainWindow):
         scroll_layout.setSpacing(15)
         
         # Configuration section
-        config_section = self._create_section("⚙️ Configuration", self._create_config_controls())
+        config_section = self._create_section("Configuration", self._create_config_controls())
         scroll_layout.addWidget(config_section)
         
         # Theme selector
-        theme_section = self._create_section("🎨 Appearance", self._create_theme_controls())
+        theme_section = self._create_section("Appearance", self._create_theme_controls())
         scroll_layout.addWidget(theme_section)
         
         # File operations
-        file_section = self._create_section("📁 File Operations", self._create_file_controls())
+        file_section = self._create_section("File Operations", self._create_file_controls())
         scroll_layout.addWidget(file_section)
         
         # RSA Key management
-        rsa_section = self._create_section("🔑 RSA Key Management", self._create_rsa_controls())
+        rsa_section = self._create_section("RSA Key Management", self._create_rsa_controls())
         scroll_layout.addWidget(rsa_section)
         
         # Redaction tools
-        redaction_section = self._create_section("🎯 Redaction Tools", self._create_redaction_controls())
+        redaction_section = self._create_section("Redaction Tools", self._create_redaction_controls())
         scroll_layout.addWidget(redaction_section)
         
         # State panel
@@ -1017,20 +1017,20 @@ class BlackoutPDFApp(QMainWindow):
         layout.setSpacing(8)
         
         # Quick config info
-        info_label = QLabel("📝 Edit 'blackout_pdf_config.json' for advanced settings")
+        info_label = QLabel("Edit 'blackout_pdf_config.json' for advanced settings")
         info_label.setWordWrap(True)
         info_label.setStyleSheet("font-size: 11px; color: #666; font-style: italic;")
         layout.addWidget(info_label)
         
         # Save config button
-        save_config_btn = QPushButton("💾 Save Current Settings")
+        save_config_btn = QPushButton("Save Current Settings")
         save_config_btn.setObjectName("small_button")
         save_config_btn.clicked.connect(self._save_current_config)
         save_config_btn.setToolTip("Save current window size and settings")
         layout.addWidget(save_config_btn)
         
         # Reset config button
-        reset_config_btn = QPushButton("🔄 Reset to Defaults")
+        reset_config_btn = QPushButton("Reset to Defaults")
         reset_config_btn.setObjectName("small_button")
         reset_config_btn.clicked.connect(self._reset_config)
         reset_config_btn.setToolTip("Reset all settings to default values")
@@ -1065,7 +1065,7 @@ class BlackoutPDFApp(QMainWindow):
         layout.setSpacing(8)
         
         self.theme_combo = QComboBox()
-        self.theme_combo.addItems(["🌞 Light Theme", "🌙 Dark Theme"])
+        self.theme_combo.addItems(["Light Theme", "Dark Theme"])
         
         # Set current theme from config
         if self.current_theme == "dark":
@@ -1086,25 +1086,25 @@ class BlackoutPDFApp(QMainWindow):
         layout.setSpacing(8)
         
         # Open PDF
-        self.open_btn = QPushButton("📂 Open PDF")
+        self.open_btn = QPushButton("Open PDF")
         self.open_btn.setObjectName("primary_button")
         self.open_btn.clicked.connect(self.open_pdf)
         layout.addWidget(self.open_btn)
         
         # Export options
-        self.export_plain_btn = QPushButton("💾 Save PDF (No Encryption)")
+        self.export_plain_btn = QPushButton("Save PDF (No Encryption)")
         self.export_plain_btn.setObjectName("secondary_button")
         self.export_plain_btn.clicked.connect(self.export_plain_pdf)
         self.export_plain_btn.setEnabled(False)
         layout.addWidget(self.export_plain_btn)
         
-        self.export_password_btn = QPushButton("🔒 Save PDF (Password)")
+        self.export_password_btn = QPushButton("Save PDF (Password)")
         self.export_password_btn.setObjectName("secondary_button")
         self.export_password_btn.clicked.connect(self.export_password_pdf)
         self.export_password_btn.setEnabled(False)
         layout.addWidget(self.export_password_btn)
         
-        self.export_rsa_btn = QPushButton("🛡️ Save PDF (RSA)")
+        self.export_rsa_btn = QPushButton("Save PDF (RSA)")
         self.export_rsa_btn.setObjectName("secondary_button")
         self.export_rsa_btn.clicked.connect(self.export_rsa_pdf)
         self.export_rsa_btn.setEnabled(False)
@@ -1120,7 +1120,7 @@ class BlackoutPDFApp(QMainWindow):
         layout.setSpacing(8)
         
         # Generate keys
-        self.generate_keys_btn = QPushButton("🔑 Generate RSA Keys")
+        self.generate_keys_btn = QPushButton("Generate RSA Keys")
         self.generate_keys_btn.setObjectName("primary_button")
         self.generate_keys_btn.clicked.connect(self.generate_rsa_keys)
         layout.addWidget(self.generate_keys_btn)
@@ -1128,12 +1128,12 @@ class BlackoutPDFApp(QMainWindow):
         # Load keys
         keys_layout = QHBoxLayout()
         
-        self.load_private_btn = QPushButton("📥 Load Private")
+        self.load_private_btn = QPushButton("Load Private")
         self.load_private_btn.setObjectName("small_button")
         self.load_private_btn.clicked.connect(self.load_private_key)
         self.load_private_btn.setToolTip("Load PRIVATE key for RSA decryption")
         
-        self.load_public_btn = QPushButton("📤 Load Public")
+        self.load_public_btn = QPushButton("Load Public")
         self.load_public_btn.setObjectName("small_button")
         self.load_public_btn.clicked.connect(self.load_public_key)
         self.load_public_btn.setToolTip("Load PUBLIC key for RSA encryption")
@@ -1143,7 +1143,7 @@ class BlackoutPDFApp(QMainWindow):
         layout.addLayout(keys_layout)
         
         # Decrypt PDF
-        self.decrypt_btn = QPushButton("🔓 Decrypt PDF")
+        self.decrypt_btn = QPushButton("Decrypt PDF")
         self.decrypt_btn.setObjectName("secondary_button")
         self.decrypt_btn.clicked.connect(self.decrypt_pdf)
         layout.addWidget(self.decrypt_btn)
@@ -1163,7 +1163,7 @@ class BlackoutPDFApp(QMainWindow):
         layout.addWidget(mode_label)
         
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["▭ Rectangle", "✏️ Freehand", "🧠 Smart", "✋ Move"])
+        self.mode_combo.addItems(["Rectangle", "Freehand", "Smart", "Move"])
         self.mode_combo.currentIndexChanged.connect(self._on_mode_changed)
         layout.addWidget(self.mode_combo)
         
@@ -1207,7 +1207,7 @@ class BlackoutPDFApp(QMainWindow):
         
         # OCR
         if TESSERACT_AVAILABLE:
-            self.ocr_btn = QPushButton("🧠 Run OCR")
+            self.ocr_btn = QPushButton("Run OCR")
             self.ocr_btn.setObjectName("secondary_button")
             self.ocr_btn.clicked.connect(self.run_ocr)
             layout.addWidget(self.ocr_btn)
@@ -1252,7 +1252,7 @@ class BlackoutPDFApp(QMainWindow):
         layout.setSpacing(30)
         
         # Title
-        title = QLabel("🛡️ BlackoutPDF")
+        title = QLabel("BlackoutPDF")
         title.setObjectName("welcome_title")
         layout.addWidget(title)
         
@@ -1263,7 +1263,7 @@ class BlackoutPDFApp(QMainWindow):
         
         # Instructions
         instructions = QLabel("""
-        <h3>🚀 Quick Start Guide:</h3>
+        <h3>Quick Start Guide:</h3>
         <ol>
         <li><b>Generate RSA Keys:</b> Create encryption keys for secure PDFs</li>
         <li><b>Open PDF:</b> Load the document you want to redact</li>
@@ -1271,14 +1271,14 @@ class BlackoutPDFApp(QMainWindow):
         <li><b>Save Securely:</b> Export with no encryption, password, or RSA</li>
         </ol>
         
-        <h3>🔄 Smart RSA Workflow:</h3>
+        <h3>Smart RSA Workflow:</h3>
         <ul>
         <li><b>Auto-Decryption:</b> Load private key → Open RSA PDF → Automatic decryption!</li>
         <li><b>Manual Decryption:</b> Use 'Decrypt PDF' button for more control</li>
         <li><b>Key Files:</b> .pdf and .key files must be in same location for auto-decryption</li>
         </ul>
         
-        <h3>🔑 RSA Key Management:</h3>
+        <h3>RSA Key Management:</h3>
         <ul>
         <li><b>PUBLIC Key:</b> Used for RSA ENCRYPTION (encrypts data - can be shared)</li>
         <li><b>PRIVATE Key:</b> Used for RSA DECRYPTION (decrypts data - keep SECRET!)</li>
@@ -1286,7 +1286,7 @@ class BlackoutPDFApp(QMainWindow):
         <li><b>RSA Process:</b> Encrypt with PUBLIC → Decrypt with PRIVATE</li>
         </ul>
         
-        <h3>⚙️ Configuration:</h3>
+        <h3>Configuration:</h3>
         <p><b>Window too big?</b> Edit <code>blackout_pdf_config.json</code> to customize:</p>
         <ul>
         <li><b>Window size:</b> "width": 1200, "height": 800</li>
@@ -1339,7 +1339,7 @@ class BlackoutPDFApp(QMainWindow):
                         if self.pdf_document.authenticate(decrypted_password):
                             # Success! RSA decryption worked
                             self._show_info_dialog("RSA Auto-Decryption", 
-                                                 f"✅ PDF automatically decrypted using loaded RSA private key!\n\n"
+                                                 f"PDF automatically decrypted using loaded RSA private key!\n\n"
                                                  f"Key file: {Path(rsa_key_file).name}")
                         else:
                             self.pdf_document.close()
@@ -1566,9 +1566,9 @@ class BlackoutPDFApp(QMainWindow):
                 # Success message
                 msg = f"PDF exported successfully!\nLocation: {output_path}"
                 if encryption_type == EncryptionType.PASSWORD:
-                    msg += "\n\n🔒 PASSWORD PROTECTION APPLIED:\nEnter the password when opening to decrypt"
+                    msg += "\n\nPASSWORD PROTECTION APPLIED:\nEnter the password when opening to decrypt"
                 else:
-                    msg += "\n\n📄 NO ENCRYPTION APPLIED:\nPDF is readable by anyone"
+                    msg += "\n\nNO ENCRYPTION APPLIED:\nPDF is readable by anyone"
                 
                 self._show_info_dialog("Export Success", msg)
                 self.status_label.setText(f"Exported: {Path(output_path).name}")
@@ -1694,7 +1694,7 @@ class BlackoutPDFApp(QMainWindow):
             
             # Success message
             msg = (f"PDF exported with RSA content encryption!\nLocation: {output_path}\n\n"
-                   f"🔒 RSA CONTENT ENCRYPTION APPLIED:\n"
+                   f"RSA CONTENT ENCRYPTION APPLIED:\n"
                    f"• PDF is readable by everyone\n"
                    f"• Original content captured and encrypted\n"
                    f"• Content completely destroyed and hidden\n"
@@ -1980,7 +1980,7 @@ class BlackoutPDFApp(QMainWindow):
                         f"RSA keys saved successfully!\n\n"
                         f"Private key: {private_path}\n"
                         f"Public key: {public_path}\n\n"
-                        "⚠️ Keep your private key secure!"
+                        "Keep your private key secure!"
                     )
             
             # Enable RSA export if PDF is loaded
@@ -2104,9 +2104,9 @@ class BlackoutPDFApp(QMainWindow):
             self._show_info_dialog(
                 "Content Decryption Success", 
                 f"RSA content decryption successful!\n\n"
-                f"📄 Original content has been restored\n"
-                f"🔓 Redactions removed using PRIVATE key\n"
-                f"💾 Document is now un-redacted and editable\n\n"
+                f"Original content has been restored\n"
+                f"Redactions removed using PRIVATE key\n"
+                f"Document is now un-redacted and editable\n\n"
                 f"Location: {pdf_path}"
             )
             
@@ -2253,11 +2253,11 @@ class BlackoutPDFApp(QMainWindow):
             
             self.status_label.setText(f"RSA Decrypted: {Path(pdf_path).name} ({len(self.pdf_document)} pages)")
             self._show_info_dialog("RSA Decryption Success", 
-                                 f"🔓 PDF decrypted successfully with RSA PRIVATE key!\n\n"
+                                 f"PDF decrypted successfully with RSA PRIVATE key!\n\n"
                                  f"Document: {Path(pdf_path).name}\n"
                                  f"Pages: {len(self.pdf_document)}\n"
                                  f"Key file used: {Path(key_path).name}\n\n"
-                                 f"✅ The document is now accessible for viewing and editing.")
+                                 f"The document is now accessible for viewing and editing.")
                 
         except Exception as e:
             error_msg = str(e)
@@ -3517,29 +3517,29 @@ def main():
     app.setOrganizationDomain("blackoutpdf.local")
     
     # Show startup message
-    print("🛡️  Starting BlackoutPDF v3.0...")
-    print("🔐 RSA Encryption/Decryption: ✅ Available")
-    print("🎯 Irréversible Redaction: ✅ Available")
-    print("📁 Multiple Export Options: ✅ Available")
+    print(" Starting BlackoutPDF v3.0...")
+    print("RSA Encryption/Decryption: Available")
+    print("Irréversible Redaction: Available")
+    print("Multiple Export Options: Available")
     
     if not TESSERACT_AVAILABLE:
-        print("⚠️  OCR features disabled (pytesseract not available)")
+        print(" OCR features disabled (pytesseract not available)")
     else:
-        print("🧠 OCR Analysis: ✅ Available")
+        print("OCR Analysis: Available")
     
     if not PIL_AVAILABLE:
-        print("⚠️  Some image features disabled (PIL not available)")
+        print("Some image features disabled (PIL not available)")
     else:
-        print("🖼️  Image Processing: ✅ Available")
+        print(" Image Processing: Available")
     
     # Create and show main window
     try:
         window = BlackoutPDFApp()
         window.show()
         
-        print("✅ BlackoutPDF started successfully!")
-        print("📖 Features: Modular design, RSA security, advanced redaction")
-        print(f"⚙️  Configuration file: {window.config.config_file}")
+        print("BlackoutPDF started successfully!")
+        print("Features: Modular design, RSA security, advanced redaction")
+        print(f"Configuration file: {window.config.config_file}")
         
         # Start application event loop
         sys.exit(app.exec_())
@@ -3567,9 +3567,9 @@ Configuration System:
 ====================
 
 BlackoutPDF uses a JSON configuration file for easy customization:
-📁 File: blackout_pdf_config.json (created automatically)
+File: blackout_pdf_config.json (created automatically)
 
-🖼️ WINDOW SETTINGS:
+WINDOW SETTINGS:
 {
     "window": {
         "width": 1200,              // Default window width
@@ -3581,7 +3581,7 @@ BlackoutPDF uses a JSON configuration file for easy customization:
     }
 }
 
-🎨 UI SETTINGS:
+UI SETTINGS:
 {
     "ui": {
         "default_theme": "light",           // "light" or "dark"
@@ -3591,7 +3591,7 @@ BlackoutPDF uses a JSON configuration file for easy customization:
     }
 }
 
-🔐 SECURITY SETTINGS:
+SECURITY SETTINGS:
 {
     "security": {
         "default_key_size": 2048,           // RSA key size (2048/3072/4096)
@@ -3600,7 +3600,7 @@ BlackoutPDF uses a JSON configuration file for easy customization:
     }
 }
 
-🎯 REDACTION SETTINGS:
+REDACTION SETTINGS:
 {
     "redaction": {
         "default_color": [0, 0, 0],         // RGB color [red, green, blue]
@@ -3609,7 +3609,7 @@ BlackoutPDF uses a JSON configuration file for easy customization:
     }
 }
 
-📁 FILE SETTINGS:
+FILE SETTINGS:
 {
     "files": {
         "temp_cleanup_on_exit": true,       // Clean temp files on exit
@@ -3639,51 +3639,6 @@ Quick Configuration Changes:
 
 Key Features - BlackoutPDF v3.0:
 ===============================
-
-✅ FIXED ISSUES:
-- ✅ Window size properly configured (no more taskbar overlap)
-- ✅ JSON configuration system for easy customization
-- ✅ Auto-fit window to screen size (90% max)
-- ✅ Configurable sidebar width and UI elements
-- ✅ Theme system works properly (light/dark)
-- ✅ Text visibility fixed in all themes
-- ✅ Password length limited to 40 characters
-- ✅ Option to save without encryption
-- ✅ Clear RSA key management with explicit purposes
-- ✅ Auto-loading of generated keys
-- ✅ Comprehensive state monitoring
-- ✅ Modular design with organized sidebar
-
-🔐 ENCRYPTION OPTIONS:
-1. **No Encryption** - Save redacted PDF without protection
-2. **Password Protection** - Standard password encryption (max 40 chars)
-3. **RSA Encryption** - Advanced public key encryption
-
-🔑 RSA KEY MANAGEMENT:
-- **Generate Keys** - Creates both keys and loads them automatically
-- **Load Private Key** - For decryption (keep secure!)
-- **Load Public Key** - For encryption (can be shared)
-- **Clear Status Display** - Shows what keys are loaded and what's possible
-
-🎯 REDACTION FEATURES:
-- **Rectangle Mode** - Standard rectangular redaction
-- **Freehand Mode** - Draw custom polygon shapes
-- **Smart Mode** - AI-assisted text detection
-- **Move Mode** - Resize and reposition existing redactions
-
-📊 STATE MONITORING:
-- **Document Status** - PDF loaded, pages count
-- **RSA Keys Status** - Which keys are loaded
-- **Encryption Readiness** - What operations are possible
-- **Redaction Count** - Number of active redactions
-
-🎨 DESIGN IMPROVEMENTS:
-- **Configurable Layout** - Adjustable window and sidebar sizes
-- **Sidebar Layout** - Organized control panels
-- **Modern Styling** - Clean, professional appearance
-- **Theme Support** - Working light/dark themes
-- **Clear Typography** - Readable text in all modes
-- **Intuitive Organization** - Logical grouping of features
 
 Configuration Examples:
 ======================
@@ -3746,18 +3701,4 @@ Usage Workflow:
    - Load private key
    - Select encrypted PDF and key file
    - Document opens decrypted
-
-Technical Excellence:
-===================
-
-- **Smart Window Management** - Auto-fits to screen, respects taskbar
-- **Configurable Interface** - JSON config for all settings
-- **Irréversible Redaction** - Complete content removal
-- **Hybrid RSA+AES Encryption** - Maximum security + performance
-- **Advanced Polygon Support** - High-precision freehand redaction
-- **Modular Architecture** - Easy to extend and maintain
-- **Comprehensive Error Handling** - Robust operation
-- **Memory Management** - Automatic cleanup
-- **Theme System** - Full light/dark theme support
-- **State Management** - Real-time status monitoring
 """
