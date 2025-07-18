@@ -69,19 +69,6 @@ python main.py
 - **Integrity Verification**: Multiple checksum validation layers
 - **Secure Cleanup**: Temporary data securely wiped after operations
 
-### **Intuitive Design**
-- **Modern GUI**: Clean Qt5 interface
-- **Interactive Canvas**: Real-time redaction preview
-- **Customizable Settings**: Themes, shortcuts, default behaviors
-- **Progress Tracking**: Visual feedback for all operations
-
-### **Professional Tools**
-- **Zoom Controls**: Precise area selection at any magnification
-- **Measurement Tools**: Exact positioning and sizing
-- **Visual Feedback**: Color-coded selection and preview modes
-- **Keyboard Shortcuts**: Efficient workflow acceleration
-
-
 ### **Dependencies**
 - **PyQt5**: Modern GUI framework
 - **PyMuPDF**: Professional PDF processing
