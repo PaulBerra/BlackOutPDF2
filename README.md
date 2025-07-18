@@ -5,7 +5,7 @@
 
 BlackOutPDF introduces a groundbreaking approach to document security: **RSA Content Encryption**. Unlike traditional tools that simply password-protect PDFs, BlackOutPDF encrypts the actual redacted content itself, allowing universal document access while restricting content restoration to authorized users only.
 
-##  Revolutionary Features
+##  Features :
 
 ### **RSA Content Encryption Technology**
 - **Universal Access**: Anyone can open and read the redacted PDF
